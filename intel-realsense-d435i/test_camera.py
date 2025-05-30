@@ -1,58 +1,92 @@
 #!/usr/bin/env python3
 
 import pyrealsense2 as rs
+import numpy as np
+import cv2
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 def main():
     try:
-        # Create a context object. This object owns the handles to all connected realsense devices
-        print("Creating RealSense context...")
+        # Create a context object
+        logger.info("Creating RealSense context...")
         ctx = rs.context()
-
-        print("Available devices:")
-        for d in ctx.devices:
-            print(f"- {d.get_info(rs.camera_info.name)} (S/N: {d.get_info(rs.camera_info.serial_number)})")
-
-        if not ctx.devices:
-            print("No RealSense devices found!")
+        
+        # Get device count
+        device_count = ctx.query_devices().size()
+        logger.info(f"Found {device_count} RealSense device(s)")
+        
+        if device_count == 0:
+            logger.error("No RealSense devices found!")
             return
-
-        # Initialize the pipeline
-        print("\nInitializing pipeline...")
+            
+        # Initialize pipeline
+        logger.info("\nInitializing pipeline...")
         pipeline = rs.pipeline()
+        
+        # Create a config object
         config = rs.config()
         
-        # Enable depth and color streams
-        print("Configuring streams...")
-        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        # Configure streams - using low resolution and framerate for USB 2.0
+        logger.info("Configuring streams...")
+        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 6)
         
-        # Start streaming with configured settings
-        print("Starting pipeline...")
-        pipeline_profile = pipeline.start(config)
+        # Start streaming
+        logger.info("Starting pipeline...")
+        profile = pipeline.start(config)
+        
+        # Getting the depth sensor's depth scale
+        depth_sensor = profile.get_device().first_depth_sensor()
+        depth_scale = depth_sensor.get_depth_scale()
+        logger.info(f"Depth Scale is: {depth_scale}")
+        
+        # Create colorizer for visualization
+        colorizer = rs.colorizer()
         
         try:
-            # Wait for a coherent pair of frames
-            print("Waiting for frames...")
-            frames = pipeline.wait_for_frames(timeout_ms=5000)  # 5 second timeout
-            depth_frame = frames.get_depth_frame()
-            color_frame = frames.get_color_frame()
-            
-            if not depth_frame or not color_frame:
-                print("Error: Could not get frames!")
-                return
+            while True:
+                # Wait for a coherent pair of frames
+                frames = pipeline.wait_for_frames(timeout_ms=5000)
+                depth_frame = frames.get_depth_frame()
+                if not depth_frame:
+                    continue
+
+                # Convert depth frame to numpy array
+                depth_image = np.asanyarray(depth_frame.get_data())
                 
-            print("\nCamera is working! Stream information:")
-            print(f"Depth frame width: {depth_frame.get_width()}")
-            print(f"Depth frame height: {depth_frame.get_height()}")
-            print(f"Color frame width: {color_frame.get_width()}")
-            print(f"Color frame height: {color_frame.get_height()}")
-            
+                # Colorize depth frame for visualization
+                colorized_depth = np.asanyarray(colorizer.colorize(depth_frame).get_data())
+                
+                # Get depth statistics
+                valid_depth = depth_image[depth_image != 0]  # Remove 0s (invalid depth)
+                if len(valid_depth) > 0:
+                    min_depth = valid_depth.min() * depth_scale
+                    max_depth = valid_depth.max() * depth_scale
+                    avg_depth = valid_depth.mean() * depth_scale
+                    
+                    # Add text to image
+                    stats_text = f"Min: {min_depth:.2f}m, Max: {max_depth:.2f}m, Avg: {avg_depth:.2f}m"
+                    cv2.putText(colorized_depth, stats_text, (10, 30), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                
+                # Show depth frame
+                cv2.namedWindow('RealSense Depth', cv2.WINDOW_AUTOSIZE)
+                cv2.imshow('RealSense Depth', colorized_depth)
+                
+                # Break loop with 'q'
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+                    
         finally:
-            print("\nStopping pipeline...")
+            logger.info("\nStopping pipeline...")
             pipeline.stop()
+            cv2.destroyAllWindows()
             
     except Exception as e:
-        print(f"\nError occurred: {str(e)}")
+        logger.error(f"Error: {str(e)}")
 
 if __name__ == "__main__":
     main() 
