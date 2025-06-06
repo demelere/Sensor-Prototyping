@@ -1,0 +1,15 @@
+---
+description: 
+globs: **/visualizer.py
+alwaysApply: false
+---
+---
+description: Visualization & performance overlay.
+globs:
+  - "**/visualizer.py"
+alwaysApply: false
+---
+
+- Composite overlay with `cv2.addWeighted(frame, 0.6, mask_rgba, 0.4, 0)`.  
+- Draw contours in **green** (`thickness=2`) and put `FPS:` + `inference ms:` text top-left.  
+- Guard headless mode: skip `cv2.imshow` if `os.environ.get("DISPLAY")` is empty.  

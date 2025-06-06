@@ -1,0 +1,23 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: High-level architecture, workflow, and non-negotiable conventions for the real-time video-segmentation project on RPi 5 + Hailo 8.
+alwaysApply: true
+---
+
+### Project in one sentence  
+Real-time video segmentation (~20-30 FPS) on a Raspberry Pi 5 using a pre-compiled **stdc1** model running on a **Hailo 8** NPU, plus custom Python logic for boundary extraction and visualization aimed at welding-seam detection.
+
+### Top-level rules  
+- **Develop on laptop → sync → test on Pi**. Never code directly on the Pi.  
+- **Sync** via `scripts/sync_code.sh` (rsync) before every test run.  
+- **One feature per file** (`hailo_inference.py`, `video_processor.py`, `boundary_extractor.py`, `visualizer.py`).  
+- **Config-driven** – all tunables live in YAML (`configs/*.yaml`). No magic numbers in code.  
+- **Graceful teardown** – always release camera handles and Hailo resources in `finally:` blocks.  
+- **Performance first** – log FPS and inference latency every run (`utils/perf.py`).  
+- No `.hef` or other large binaries in Git; keep them in `.gitignore`.
+
+@file configs/default.yaml

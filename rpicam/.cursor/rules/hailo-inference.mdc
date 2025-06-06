@@ -1,0 +1,26 @@
+---
+description: 
+globs: **/hailo_inference.py
+alwaysApply: false
+---
+
+---
+
+## 03_hailo-inference.mdc  
+*(auto-attached to `hailo_inference.py` or any file that imports it)*
+
+```mdc
+---
+description: Correct usage pattern for HailoRT inference with stdc1.hef
+globs:
+  - "**/hailo_inference.py"
+  - "**/*hailo*.py"
+alwaysApply: false
+---
+
+- Always load the HailoRT **hef** once, cache context in a singleton.  
+- Resize → normalize (mean 0.485/0.456/0.406, std 0.229/0.224/0.225) → NCHW tensor.  
+- Model expects **224×224 RGB** – keep this centralized in `configs/model.yaml`.  
+- Return `np.uint8` segmentation mask with class IDs (not probabilities).  
+- Provide `warmup()` to run one dummy inference for timing stability.  
+- Wrap all HailoRT calls in `try/except hailo_rt.HailoRtError as e:`; re-raise with helpful message.  

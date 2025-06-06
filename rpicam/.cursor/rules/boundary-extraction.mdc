@@ -1,0 +1,22 @@
+---
+description: 
+globs: **/boundary_extractor.py
+alwaysApply: false
+---
+
+---
+
+## 05_boundary-extraction.mdc  
+*(auto-attached to `boundary_extractor.py`)*
+
+```mdc
+---
+description: Post-segmentation boundary and seam extraction rules.
+globs:
+  - "**/boundary_extractor.py"
+alwaysApply: false
+---
+
+- Apply `cv2.morphologyEx(mask, MORPH_OPEN, kernel=3)` to remove speckles.  
+- Use `cv2.findContours` (mode = `RETR_EXTERNAL`, method = `CHAIN_APPROX_NONE`) on class-to-class boundary mask.  
+- Return list of `np.ndarray` contour points; downstream welding logic consumes these.  

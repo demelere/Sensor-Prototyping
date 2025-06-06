@@ -1,0 +1,12 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: Git hygiene & sync workflow cheatsheet.
+alwaysApply: false
+---
+
+- Run `scripts/sync_code.sh` **before** every commit to verify Pi still runs.  
+- `.gitignore` must include:  

@@ -1,0 +1,18 @@
+---
+description: 
+globs: **/*.py
+alwaysApply: false
+---
+---
+description: Enforce modular pipeline layout and basic style for all `.py` files.
+globs:
+  - "**/*.py"
+alwaysApply: false            # attach automatically when a .py file is in context
+---
+
+- **Pipeline skeleton**  
+  ```txt
+  load_model()  # optional, cached
+  preprocess(input) -> tensor
+  inference(tensor) -> raw_output
+  postprocess(raw_output) -> typed_result

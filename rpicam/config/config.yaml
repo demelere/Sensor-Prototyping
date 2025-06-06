@@ -1,0 +1,21 @@
+# Welding Video Segmentation Configuration
+
+model:
+  path: "models/stdc1.hef"
+  input_size: [1024, 1920, 3]
+  target_size: [720, 1280]  # Resize for your target resolution
+
+camera:
+  resolution: [720, 1280]   # Height x Width
+  framerate: 30
+  format: "RGB888"
+
+processing:
+  target_fps: 25
+  enable_boundary_extraction: true
+  visualization: true
+  save_output: false
+
+display:
+  window_name: "Welding Segmentation"
+  overlay_alpha: 0.6 
