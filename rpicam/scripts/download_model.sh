@@ -5,7 +5,7 @@
 
 MODEL_DIR="../models"
 MODEL_NAME="stdc1.hef"
-MODEL_URL="https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/HailoNets/MCNet/Segmentation/Cityscapes/stdc1/pretrained/2023-09-18/stdc1.hef"
+MODEL_URL="https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.15.0/hailo8/stdc1.hef"
 
 echo "=== Downloading Hailo stdc1 model ==="
 
