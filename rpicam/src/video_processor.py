@@ -1,5 +1,5 @@
 """
-Video capture and processing pipeline for real-time segmentation
+Video capture and processing pipeline for real-time instance segmentation
 """
 
 import time
@@ -22,7 +22,7 @@ class VideoProcessor:
         """Initialize video processor
         
         Args:
-            inference_engine: HailoInference instance for segmentation
+            inference_engine: HailoInference instance for instance segmentation
         """
         self.inference_engine = inference_engine
         self.camera = None
@@ -31,12 +31,28 @@ class VideoProcessor:
         self.resolution = config.get('camera.resolution')  # [H, W]
         self.framerate = config.get('camera.framerate')
         self.target_fps = config.get('processing.target_fps')
+        self.show_confidence = config.get('display.show_confidence', True)
+        self.show_class_names = config.get('display.show_class_names', True)
         
         # Performance tracking
         self.frame_count = 0
         self.total_inference_time = 0
         self.start_time = None
         
+        # COCO class names (first 80 classes)
+        self.class_names = [
+            'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
+            'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
+            'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+            'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+            'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+            'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+            'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
+            'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
+            'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator',
+            'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+        ]
+    
     def initialize_camera(self):
         """Initialize and configure Pi camera"""
         if not CAMERA_AVAILABLE:
@@ -80,14 +96,14 @@ class VideoProcessor:
             frame: Input frame
             
         Returns:
-            dict: Processing results with 'mask', 'inference_time', etc.
+            dict: Processing results with 'frame', 'results', 'inference_time', etc.
         """
         if frame is None or self.inference_engine is None:
             return None
         
         # Run inference
         inference_start = time.time()
-        mask = self.inference_engine.predict(frame)
+        results = self.inference_engine.predict(frame)
         inference_time = time.time() - inference_start
         
         # Update performance tracking
@@ -96,7 +112,7 @@ class VideoProcessor:
         
         return {
             'frame': frame,
-            'mask': mask,
+            'results': results,
             'inference_time': inference_time,
             'frame_number': self.frame_count
         }
@@ -115,13 +131,80 @@ class VideoProcessor:
               f"Inference: {result['inference_time']*1000:5.1f}ms | "
               f"Avg: {avg_inference_time*1000:5.1f}ms")
         
-        if result['mask'] is not None:
-            unique_vals = np.unique(result['mask'])
-            print(f"    Mask classes: {len(unique_vals)} | Values: {unique_vals}")
+        if result['results'] is not None:
+            num_instances = len(result['results']['classes'])
+            print(f"    Instances detected: {num_instances}")
     
-    def run_realtime_test(self, duration_seconds=10, min_frames=60):
-        """Run real-time segmentation test with display visualization"""
-        print("\n=== Real-Time Video Segmentation Test ===")
+    def _create_segmentation_overlay(self, frame, results):
+        """Create visualization overlay with instance segmentation results"""
+        display_frame = frame.copy()
+        
+        if results is None:
+            cv2.putText(display_frame, "No detection results", (10, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            return display_frame
+        
+        # Get results
+        boxes = results['boxes']
+        scores = results['scores']
+        classes = results['classes']
+        masks = results['masks']
+        
+        # Generate random colors for each instance
+        num_instances = len(classes)
+        colors = np.random.randint(0, 255, (num_instances, 3), dtype=np.uint8)
+        
+        # Create overlay for masks
+        overlay = np.zeros_like(display_frame)
+        
+        # Draw each instance
+        for i in range(num_instances):
+            # Get instance info
+            box = boxes[i]
+            score = scores[i]
+            class_id = int(classes[i])
+            mask = masks[i]
+            color = colors[i]
+            
+            # Draw mask
+            mask_overlay = np.zeros_like(overlay)
+            mask_overlay[mask > 0] = color
+            cv2.addWeighted(overlay, 1, mask_overlay, 0.5, 0, overlay)
+            
+            # Draw bounding box
+            y1, x1, y2, x2 = box
+            cv2.rectangle(display_frame, (x1, y1), (x2, y2), color.tolist(), 2)
+            
+            # Prepare label
+            label = []
+            if self.show_class_names and class_id < len(self.class_names):
+                label.append(self.class_names[class_id])
+            if self.show_confidence:
+                label.append(f"{score:.2f}")
+            label = " ".join(label)
+            
+            # Draw label background
+            (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(display_frame, (x1, y1-label_h-4), (x1+label_w, y1), color.tolist(), -1)
+            
+            # Draw label text
+            cv2.putText(display_frame, label, (x1, y1-4),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        # Blend overlay with original frame
+        alpha = config.get('display.overlay_alpha', 0.6)
+        cv2.addWeighted(display_frame, 1-alpha, overlay, alpha, 0, display_frame)
+        
+        # Add frame info
+        info_text = f"Instances: {num_instances}"
+        cv2.putText(display_frame, info_text, (10, 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        return display_frame
+    
+    def run_realtime_test(self):
+        """Run real-time instance segmentation test with display visualization"""
+        print("\n=== Real-Time Instance Segmentation Test ===")
         
         if not CAMERA_AVAILABLE:
             print("❌ Camera not available")
@@ -143,8 +226,9 @@ class VideoProcessor:
             print(f"📹 Camera ready at {self.resolution[1]}x{self.resolution[0]}")
             
             # Create display window
-            cv2.namedWindow('Real-Time Segmentation', cv2.WINDOW_NORMAL)
-            cv2.resizeWindow('Real-Time Segmentation', 1280, 720)
+            window_name = config.get('display.window_name', 'Instance Segmentation')
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(window_name, 1280, 720)
             
             print("🔄 Starting real-time processing...")
             print("Press 'q' to quit or Ctrl+C to stop")
@@ -163,17 +247,17 @@ class VideoProcessor:
                 
                 # Run inference
                 inference_start = time.time()
-                mask = None
+                results = None
                 if self.inference_engine:
-                    mask = self.inference_engine.predict(frame)
+                    results = self.inference_engine.predict(frame)
                 inference_time = (time.time() - inference_start) * 1000
                 inference_times.append(inference_time)
                 
                 # Create visualization
-                display_frame = self._create_segmentation_overlay(frame, mask)
+                display_frame = self._create_segmentation_overlay(frame, results)
                 
                 # Display on Pi screen
-                cv2.imshow('Real-Time Segmentation', display_frame)
+                cv2.imshow(window_name, display_frame)
                 
                 # Handle window events
                 key = cv2.waitKey(1) & 0xFF
@@ -189,17 +273,12 @@ class VideoProcessor:
                     avg_fps = frame_count / elapsed_time
                     avg_inference = np.mean(inference_times[-30:])
                     
-                    if mask is not None:
-                        unique_values = np.unique(mask)
+                    if results is not None:
+                        num_instances = len(results['classes'])
                         print(f"📊 Frame {frame_count:4d} | FPS: {avg_fps:5.1f} | Inference: {avg_inference:6.1f}ms | Avg: {np.mean(inference_times):6.1f}ms")
-                        print(f"    Mask classes: {len(unique_values)} | Values: {unique_values}")
+                        print(f"    Instances detected: {num_instances}")
                     else:
                         print(f"📊 Frame {frame_count:4d} | FPS: {avg_fps:5.1f} | No inference")
-                
-                # Stop after duration OR minimum frames reached
-                if elapsed_time >= duration_seconds and frame_count >= min_frames:
-                    print(f"🛑 Stopped after {duration_seconds} seconds and {frame_count} frames")
-                    break
             
             # Cleanup
             cv2.destroyAllWindows()
@@ -232,49 +311,6 @@ class VideoProcessor:
             if 'picam2' in locals():
                 picam2.stop()
             cv2.destroyAllWindows()
-    
-    def _create_segmentation_overlay(self, frame, mask):
-        """Create visualization overlay with segmentation mask"""
-        display_frame = frame.copy()
-        
-        if mask is not None:
-            # Create colored overlay for segmentation
-            height, width = mask.shape[:2]
-            colored_mask = np.zeros((height, width, 3), dtype=np.uint8)
-            
-            # Assign different colors to different classes
-            unique_classes = np.unique(mask)
-            colors = [
-                (0, 0, 0),      # Black for background (class 0)
-                (255, 0, 0),    # Red
-                (0, 255, 0),    # Green  
-                (0, 0, 255),    # Blue
-                (255, 255, 0),  # Yellow
-                (255, 0, 255),  # Magenta
-                (0, 255, 255),  # Cyan
-                (128, 128, 128), # Gray
-                (255, 165, 0),  # Orange
-                (128, 0, 128),  # Purple
-            ]
-            
-            for i, class_id in enumerate(unique_classes):
-                if class_id == 0:  # Skip background
-                    continue
-                color = colors[min(i, len(colors)-1)]
-                colored_mask[mask == class_id] = color
-            
-            # Blend with original frame (30% overlay)
-            alpha = 0.3
-            display_frame = cv2.addWeighted(display_frame, 1-alpha, colored_mask, alpha, 0)
-            
-            # Add text overlay with class information
-            text = f"Classes: {len(unique_classes)} | Values: {unique_classes}"
-            cv2.putText(display_frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        else:
-            # No mask - just show original frame with text
-            cv2.putText(display_frame, "No segmentation mask", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        
-        return display_frame
     
     def cleanup(self):
         """Clean up camera resources"""

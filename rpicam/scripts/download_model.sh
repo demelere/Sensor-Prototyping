@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Download stdc1 model from Hailo Model Zoo
+# Download YOLOv8n-seg model from Hailo Model Zoo
 # This script should be run on the Raspberry Pi
 
 MODEL_DIR="../models"
-MODEL_NAME="stdc1.hef"
-MODEL_URL="https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.15.0/hailo8/stdc1.hef"
+MODEL_NAME="yolov8n_seg.hef"
+MODEL_URL="https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.15.0/hailo8/yolov8n_seg.hef"
 
-echo "=== Downloading Hailo stdc1 model ==="
+echo "=== Downloading Hailo YOLOv8n-seg model ==="
 
 # Create models directory if it doesn't exist
 mkdir -p "$MODEL_DIR"
