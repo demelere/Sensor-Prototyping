@@ -56,3 +56,11 @@ cd scripts && ./download_model.sh
 - [ ] Video capture pipeline
 - [ ] Boundary extraction
 - [ ] Real-time visualization 
+
+## Testing Camera
+To test the camera and view the feed on the Pi's display (even when controlling via SSH):
+```bash
+export DISPLAY=:0
+libcamera-vid -t 0 --preview 0 --width 1280 --height 720
+```
+This will stream the camera feed indefinitely until you press Ctrl+C. 
