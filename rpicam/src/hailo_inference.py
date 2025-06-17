@@ -117,14 +117,14 @@ class HailoInference:
         
         # Resize to model input size
         h, w = self.input_size[0], self.input_size[1]
-        resized = cv2.resize(frame, (w, h))
+        resized = cv2.resize(frame, (w, h), interpolation=cv2.INTER_NEAREST)  # Use nearest neighbor for speed
         
         # Convert BGR to RGB
         if len(resized.shape) == 3 and resized.shape[2] == 3:
             resized = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
         
-        # Normalize to [0, 1]
-        preprocessed = resized.astype(np.float32) / 255.0
+        # Keep as uint8 for model input
+        preprocessed = resized.astype(np.uint8)
         
         # Add batch dimension
         if len(preprocessed.shape) == 3:
@@ -185,41 +185,99 @@ class HailoInference:
             return raw_output
         
         try:
-            # Extract outputs based on YOLOSeg model structure
-            # Note: Actual output names may need to be adjusted based on your model
-            boxes = raw_output["detection_boxes"]
-            scores = raw_output["detection_scores"]
-            classes = raw_output["detection_classes"]
-            masks = raw_output["detection_masks"]
+            # Get raw outputs
+            boxes = np.array(raw_output['yolov8n_seg/conv73'])  # [1, 20, 20, 64]
+            scores = np.array(raw_output['yolov8n_seg/conv74'])  # [1, 20, 20, 80]
+            classes = np.array(raw_output['yolov8n_seg/conv75'])  # [1, 20, 20, 32]
+            masks = np.array(raw_output['yolov8n_seg/conv60'])   # [1, 40, 40, 64]
             
-            # Filter by confidence threshold
-            keep_indices = scores > self.confidence_threshold
-            boxes = boxes[keep_indices]
-            scores = scores[keep_indices]
-            classes = classes[keep_indices]
-            masks = masks[keep_indices]
+            # Remove batch dimension
+            boxes = boxes[0]    # [20, 20, 64]
+            scores = scores[0]  # [20, 20, 80]
+            classes = classes[0]  # [20, 20, 32]
+            masks = masks[0]    # [40, 40, 64]
+            
+            # Get max scores and class IDs for each grid cell
+            max_scores = np.max(scores, axis=2)  # [20, 20]
+            class_ids = np.argmax(scores, axis=2)  # [20, 20]
+            
+            # Find cells with scores above threshold
+            valid_cells = max_scores > self.confidence_threshold
+            if not np.any(valid_cells):
+                return None
+            
+            # Get coordinates of valid cells
+            valid_y, valid_x = np.where(valid_cells)
+            
+            # Sort by score to keep only top detections
+            cell_scores = max_scores[valid_y, valid_x]
+            sort_idx = np.argsort(-cell_scores)  # Sort in descending order
+            valid_y = valid_y[sort_idx]
+            valid_x = valid_x[sort_idx]
+            
+            # Keep only top 20 detections
+            max_detections = 20
+            valid_y = valid_y[:max_detections]
+            valid_x = valid_x[:max_detections]
+            
+            # Pre-allocate arrays for better performance
+            valid_boxes = []
+            valid_scores = []
+            valid_classes = []
+            valid_masks = []
+            
+            # Process each valid detection
+            for y, x in zip(valid_y, valid_x):
+                # Get box coordinates
+                box = boxes[y, x].reshape(-1, 4)[0]
+                
+                # Get score and class
+                score = max_scores[y, x]
+                class_id = class_ids[y, x]
+                
+                # Skip if class_id is out of bounds for masks
+                if class_id >= masks.shape[2]:
+                    continue
+                
+                # Get mask for this class
+                mask = masks[:, :, class_id]  # [40, 40]
+                
+                # Only keep if mask has significant positive values
+                if np.mean(mask > 0.5) > 0.01:  # At least 1% of mask should be positive
+                    valid_boxes.append(box)
+                    valid_scores.append(score)
+                    valid_classes.append(class_id)
+                    valid_masks.append(mask)
+            
+            if not valid_boxes:
+                return None
+            
+            # Convert to numpy arrays
+            valid_boxes = np.array(valid_boxes)
+            valid_scores = np.array(valid_scores)
+            valid_classes = np.array(valid_classes)
             
             # Resize masks to original frame size
             h, w = original_shape[:2]
             resized_masks = []
-            for mask in masks:
+            for mask in valid_masks:
                 resized_mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+                # Threshold the mask to make it binary
+                resized_mask = (resized_mask > 0.5).astype(np.uint8)
                 resized_masks.append(resized_mask)
             
             # Convert boxes to pixel coordinates
-            boxes_pixels = []
-            for box in boxes:
-                y1, x1, y2, x2 = box
-                y1 = int(y1 * h)
-                x1 = int(x1 * w)
-                y2 = int(y2 * h)
-                x2 = int(x2 * w)
-                boxes_pixels.append([y1, x1, y2, x2])
+            boxes_pixels = np.zeros_like(valid_boxes)
+            boxes_pixels[:, 0] = valid_boxes[:, 1] * h  # y1
+            boxes_pixels[:, 1] = valid_boxes[:, 0] * w  # x1
+            boxes_pixels[:, 2] = valid_boxes[:, 3] * h  # y2
+            boxes_pixels[:, 3] = valid_boxes[:, 2] * w  # x2
+            boxes_pixels = boxes_pixels.astype(np.int32)
             
             return {
-                "boxes": np.array(boxes_pixels),
-                "scores": scores,
-                "classes": classes,
+                "boxes": boxes_pixels,
+                "scores": valid_scores,
+                "classes": valid_classes,
                 "masks": np.array(resized_masks)
             }
             

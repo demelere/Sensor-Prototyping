@@ -3,13 +3,13 @@
 model:
   path: "models/yolov8n_seg.hef"
   input_size: [640, 640, 3]  # YOLOv8n-seg standard input size
-  target_size: [720, 1280]  # Resize for your target resolution
+  target_size: [480, 640]  # Reduced target resolution
   confidence_threshold: 0.5
   iou_threshold: 0.45
   num_classes: 80  # COCO dataset classes
 
 camera:
-  resolution: [720, 1280]   # Height x Width
+  resolution: [480, 640]   # Reduced resolution for better performance
   framerate: 30
   format: "RGB888"
 
@@ -19,6 +19,7 @@ processing:
   visualization: true
   save_output: false
   instance_colors: true  # Use different colors for each instance
+  skip_frames: 1  # Process every other frame
 
 display:
   window_name: "Instance Segmentation"

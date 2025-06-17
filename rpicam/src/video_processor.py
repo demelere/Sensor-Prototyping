@@ -150,6 +150,12 @@ class VideoProcessor:
         classes = results['classes']
         masks = results['masks']
         
+        print(f"\nDebug - Processing {len(classes)} instances:")
+        print(f"Boxes shape: {boxes.shape}")
+        print(f"Scores shape: {scores.shape}")
+        print(f"Classes shape: {classes.shape}")
+        print(f"Masks shape: {masks.shape}")
+        
         # Generate random colors for each instance
         num_instances = len(classes)
         colors = np.random.randint(0, 255, (num_instances, 3), dtype=np.uint8)
@@ -166,10 +172,16 @@ class VideoProcessor:
             mask = masks[i]
             color = colors[i]
             
-            # Draw mask
+            print(f"Instance {i}:")
+            print(f"  Box: {box}")
+            print(f"  Score: {score:.2f}")
+            print(f"  Class: {class_id} ({self.class_names[class_id] if class_id < len(self.class_names) else 'unknown'})")
+            print(f"  Mask sum: {np.sum(mask)}")
+            
+            # Draw mask with higher opacity
             mask_overlay = np.zeros_like(overlay)
             mask_overlay[mask > 0] = color
-            cv2.addWeighted(overlay, 1, mask_overlay, 0.5, 0, overlay)
+            cv2.addWeighted(overlay, 1, mask_overlay, 0.7, 0, overlay)
             
             # Draw bounding box
             y1, x1, y2, x2 = box
@@ -191,8 +203,8 @@ class VideoProcessor:
             cv2.putText(display_frame, label, (x1, y1-4),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
-        # Blend overlay with original frame
-        alpha = config.get('display.overlay_alpha', 0.6)
+        # Blend overlay with original frame with higher mask visibility
+        alpha = 0.4  # Increased from 0.6 to make masks more visible
         cv2.addWeighted(display_frame, 1-alpha, overlay, alpha, 0, display_frame)
         
         # Add frame info
@@ -217,7 +229,8 @@ class VideoProcessor:
             # Initialize camera and inference
             picam2 = Picamera2()
             camera_config = picam2.create_video_configuration(
-                main={"size": (self.resolution[1], self.resolution[0]), "format": "RGB888"}
+                main={"size": (self.resolution[1], self.resolution[0]), "format": "RGB888"},
+                buffer_count=4  # Reduce buffer count for lower latency
             )
             picam2.configure(camera_config)
             
@@ -228,7 +241,7 @@ class VideoProcessor:
             # Create display window
             window_name = config.get('display.window_name', 'Instance Segmentation')
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(window_name, 1280, 720)
+            cv2.resizeWindow(window_name, 640, 480)  # Smaller window for better performance
             
             print("🔄 Starting real-time processing...")
             print("Press 'q' to quit or Ctrl+C to stop")
@@ -236,6 +249,8 @@ class VideoProcessor:
             start_time = time.time()
             frame_count = 0
             inference_times = []
+            skip_frames = config.get('processing.skip_frames', 1)
+            frame_idx = 0
             
             while True:
                 loop_start = time.time()
@@ -243,6 +258,11 @@ class VideoProcessor:
                 # Capture frame
                 frame = picam2.capture_array()
                 if frame is None:
+                    continue
+                
+                # Skip frames for better performance
+                frame_idx += 1
+                if frame_idx % (skip_frames + 1) != 0:
                     continue
                 
                 # Run inference
