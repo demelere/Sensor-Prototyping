@@ -23,7 +23,7 @@ def main():
     video_processor = VideoProcessor(inference_engine=inference)
     
     # Run real-time test
-    video_processor.run_realtime_test(duration_seconds=10, min_frames=60)
+    video_processor.run_realtime_test()
     
     print("\n🎉 Real-time video segmentation test complete!")
 
