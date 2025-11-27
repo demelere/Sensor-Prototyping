@@ -1,11 +1,11 @@
 # Lucid Triton Camera Setup - Raspberry Pi 5
 
-Setup guide for Lucid Triton GigE Vision camera with RPi5 running Ubuntu 22.04.
+Setup guide for Lucid Triton TRI054S-CC GigE Vision camera with RPi5 running Ubuntu 22.04.
 
 ## Prerequisites
 
 **Hardware**
-- Raspberry Pi 5
+- Raspberry Pi 5 or NVIDIA Jetson Orin Nano
 - Lucid Triton camera
 - Ethernet cable (Cat5e+)
 - Camera power supply
